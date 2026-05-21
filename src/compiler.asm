@@ -5,7 +5,7 @@ bits 64
 section .data
 	msg_done: db "[*] DONE", 10
 	msg_done_len: equ $-msg_done
-	msg_error_args: db "[X] ERROR ARGS ./compiler archive.lc ",10
+	msg_error_args: db "[X] ERROR ARGS ./compiler archive.lc output format",10
 	errorargslen: equ $-msg_error_args
 	msg_file_open_error: db "[X] FILE OPEN ERROR",10
 	file_open_errorlen: equ $-msg_file_open_error
@@ -21,6 +21,8 @@ section .data
 	hellolen: equ $-hello
 	compiling: db "Compiling: "
 	compilinglen: equ $-compiling
+	format: db "Format: "
+	formatlen: equ $-format
 	newline: db 10
 	; COMMANDS
 	; EXIT
@@ -40,6 +42,10 @@ section .data
 	uefi_start_opcodes:
 		db 0x49, 0x89, 0xd4 ; mov r12, rdx
 	uefi_start_len: equ $ - uefi_start_opcodes
+	; FORMATS
+	format_pe: db "--pe",0
+	format_bin: db "--bin",0
+	format_elf: db "--elf",0
 	; EXEC
 	uefi_exec_opcodes:
 		db 0x48, 0x8b, 0x45, 0x40    ; mov rax, [r12 + 64] (Pega ConOut da SystemTable)
@@ -120,6 +126,49 @@ section .data
         dd 0xC0000040           ; Characteristics (Data, Read, Write)
 
         times (512 - ($ - pe_header_data)) db 0 ; Padding
+	; ELF HEADER
+	elf_header:
+		db 0x7F, 'E', 'L', 'F'      ; e_ident
+		db 2                        ; e_ident[EI_CLASS]
+		db 1                        ; e_ident[EI_DATA]
+		db 1                        ; e_ident[EI_VERSION]
+		db 0                        ; e_ident[EI_OSABI]
+		times 8 db 0                ; e_ident
+    
+		dw 2                        ; e_type
+		dw 0x3E                     ; e_machine
+		dd 1                        ; e_version
+    
+		dq 0x401000                 ; e_entry
+                                
+		dq 64                       ; e_phof
+		dq 0                        ; e_shoff
+		dd 0                        ; e_flags
+		dw 64                       ; e_ehsiz
+    
+		dw 56                       ; e_phentsize
+		dw 2                        ; e_phnum
+		dw 0                        ; e_shentsize
+		dw 0                        ; e_shnum
+		dw 0                        ; e_shstrndx
+	phdr_code:
+		dd 1                        ; p_type
+		dd 5                        ; p_flags
+		dq 0x1000                   ; p_offset
+		dq 0x401000                 ; p_vaddr
+		dq 0x401000                 ; p_paddr
+		dq 0x1000                   ; p_filesz
+		dq 0x1000                   ; p_memsz
+		dq 0x1000                   ; p_align
+	phdr_data:
+		dd 1                        ; p_type
+		dd 6                        ; p_flags
+		dq 0x2000                   ; p_offset
+		dq 0x402000                 ; p_vaddr
+		dq 0x402000                 ; p_paddr
+		dq 0x1000                   ; p_filesz
+		dq 0x1000                   ; p_memsz
+		dq 0x1000                   ; p_align
 
 section .bss
 	end_fd: resq 1
@@ -144,6 +193,10 @@ section .bss
 	var_value_len: resq 1
 	code_buffer: resb 4096
 	data_buffer: resb 4096
+	; ARGS
+	is_bin: resq 1
+	is_pe: resq 1
+	is_elf: resq 1
 	
 section .text
 	global _start
@@ -163,7 +216,7 @@ _start:
 	syscall
 
 	mov rax, [rsp]
-	cmp rax, 3
+	cmp rax, 4
 	jl error_args
 	mov rsi,[rsp+16]
 	xor rcx, rcx
@@ -177,6 +230,10 @@ _start:
     mov [symbol_count], rax
     mov r14, rax
     mov r15, rax
+
+    mov byte [is_bin], 0
+    mov byte [is_pe], 0
+    mov byte [is_elf], 0
 
 	jmp strlen_loop
 
@@ -201,7 +258,38 @@ have_len:
 	mov rdx, 1
 	syscall
 
+	mov rax, 1
+	mov rdi, 1
+	mov rsi, format
+	mov rdx, formatlen
+	syscall
+
+	mov rsi, [rsp+32]
+
+	call get_strlen
+
+	mov rax, 1
+	mov rdi, 1
+	syscall
+
+	mov rax, 1
+	mov rdi, 1
+	mov rsi, newline ; \n
+	mov rdx, 1
+	syscall
+
 	jmp openfile
+
+get_strlen:
+    xor rdx, rdx
+.loop:
+    mov al, byte [rsi+rdx]
+    cmp al, 0
+    je .done
+    inc rdx
+    jmp .loop
+.done:
+    ret
 
 ; --- FUNCTION: error_args ---
 error_args:
@@ -343,6 +431,36 @@ openfile:
     cmp rax, 0
     js file_open_error
     mov [fd], rax
+
+pickformat:
+	mov rsi, [rsp+32]
+	lea rdi, [format_pe]
+	call strcmp
+	jc .format_pe
+
+	mov rsi, [rsp+32]
+	lea rdi, [format_bin]
+	call strcmp
+	jc .format_bin
+
+	mov rsi, [rsp+32]
+	lea rdi, [format_elf]
+	call strcmp
+	jc .format_elf
+
+	jmp error_args
+
+.format_pe:
+	mov byte [is_pe], 1
+	jmp readfile
+
+.format_elf:
+	mov byte [is_elf], 1
+	jmp readfile
+
+.format_bin:
+	mov byte [is_bin], 1
+	jmp readfile
 
 ; --- FUNCTION: readfile ---
 readfile:
@@ -775,6 +893,9 @@ cmdexit:
 ; -------------------------
 ; --- FUNCTION: cmdexec ---
 cmdexec:
+	cmp byte [is_pe], 0
+	je .exec_syscall
+
     call pickarg
     call atoi_arg
     
@@ -846,11 +967,30 @@ cmdexec:
     jmp cmpchar
 
 .copy:
+	push rcx
     lea rdi, [code_buffer + r14]
     mov r11, rcx 
     rep movsb
     add r14, r11 
+    pop rcx
     
+    jmp cmpchar
+    
+.exec_syscall:
+	call pickarg
+	
+	mov byte [codgen_buffer + 0], 0x0F
+    mov byte [codgen_buffer + 1], 0x05
+
+	push rcx
+    lea rsi, [codgen_buffer]
+    lea rdi, [code_buffer + r14]
+    mov rcx, 2
+    rep movsb
+    pop rcx
+    
+    add r14, 2
+        
     jmp cmpchar
 ; --- FUNCTION: cmdexec ---
 ; -------------------------
@@ -858,10 +998,12 @@ cmdexec:
 cmdmov:
 	mov byte [is_addr], 0
 	mov byte [is_address], 0
+	xor rax, rax
+	xor rdx, rdx
 	
 	call pickarg
 	
-	cmp [is_address], 1
+	cmp byte [is_address], 1
 	je cmdmov_reg_to_var
 	
 	mov rax, 1
@@ -1131,29 +1273,23 @@ generic_mov_mem:
     pop rax
     
     mov byte [codgen_buffer + 0], 0x48
-    mov [codgen_buffer + 2], al
-    cmp [is_addr], 1
+    cmp byte [is_addr], 1
     je .mov_is_addr
-    cmp [is_address], 1
+    cmp byte [is_address], 1
     je .mov_is_address
-    
     jmp .continue_gen
     
 .mov_is_addr:
-	mov byte [codgen_buffer + 1], 0x8B
-	jmp .continue_gen
+    mov byte [codgen_buffer + 1], 0x8B
+    mov [codgen_buffer + 2], al
+    jmp .continue_gen
 
 .mov_is_address:
-	mov byte [codgen_buffer + 1], 0x89
-	jmp .continue_gen
+    mov byte [codgen_buffer + 1], 0x89
+    mov [codgen_buffer + 2], al
+    jmp .continue_gen
     
-.continue_gen:
-	mov rax, 1
-    mov rdi, 1
-    mov rsi, cmd_arg
-    mov rdx, 32
-    syscall
-
+.continue_gen:	
 	call var_to_addr
     
     mov r8, CODE_LIMIT
@@ -1183,6 +1319,7 @@ var_to_addr:
 
     mov rcx, [symbol_count]
     xor rbx, rbx
+    xor r9, r9
 
     cmp byte [is_addr], 1
     je .use_arg2
@@ -1193,24 +1330,28 @@ var_to_addr:
 
 .use_arg1:
     lea rsi, [cmd_arg]
-        
+    
+    push rcx
     mov rax, 1
     mov rdi, 1
     mov rdx, [cmd_arg_len]
     syscall
+    pop rcx
     jmp .search_loop
 
 .use_arg2:
     lea rsi, [cmd_arg_2]
-        
+    
+    push rcx
     mov rax, 1
     mov rdi, 1
     mov rdx, [cmd_arg_2_len]
     syscall
+    pop rcx
     jmp .search_loop
 
 .search_loop:
-    cmp rbx, rcx
+    cmp r9, rcx
     jge .not_found
 
     lea rdi, [var_symbols + rbx]
@@ -1229,6 +1370,7 @@ var_to_addr:
 
 .next_symbol:
     add rbx, 40
+    inc r9	
     jmp .search_loop
 
 .found:
@@ -1284,7 +1426,7 @@ cmdvar:
 .after_name:
     mov byte [var_name + rdi], 0
     mov [var_name_len], rdi
-    cmp [var_name_len], 32
+    cmp byte [var_name_len], 32
     je errorline
 
 .skip_2:
@@ -1321,9 +1463,13 @@ cmdvar:
     mov [var_value + rdi], al
     inc rdi
     inc rbx
-    mov [var_value + rdi], 0
-    inc rdi
+    cmp byte [is_pe], 1
+    je .string_loop_pe
     jmp .string_loop
+.string_loop_pe:
+	mov byte [var_value + rdi], 0
+	inc rdi
+	jmp .string_loop
 
 .string_done:
     mov byte [var_value + rdi], 0
@@ -1470,10 +1616,52 @@ write_pe_header:
     pop rsi
     pop rdi
     pop rax
-    ret
+    mov byte [is_pe], 0
+    jmp endarchive
+; --- FUNCTION: write_elf_header ---
+write_elf_header:
+	push rax
+	push rdi
+	push rsi
+	push rdx
+	
+	mov rax, 8
+    mov rdi, [end_fd]
+    xor rsi, rsi
+    xor rdx, rdx
+    syscall
+    
+    mov rax, 1
+    mov rdi, [end_fd]
+    mov rsi, elf_header
+    mov rdx, 64
+    syscall
+
+    mov rax, 1
+    mov rdi, [end_fd]
+    mov rsi, phdr_code
+    mov rdx, 56
+    syscall
+
+    mov rax, 1
+    mov rdi, [end_fd]
+    mov rsi, phdr_data
+    mov rdx, 56
+    syscall
+	
+	pop rdx
+	pop rsi
+	pop rdi
+	pop rax
+	mov byte [is_elf], 0
+	jmp endarchive
 ; --- FUNCTION: endarchive ---
 endarchive:
-    call write_pe_header
+	cmp byte [is_pe], 1
+    je write_pe_header
+    
+    cmp byte [is_elf], 1
+    je write_elf_header
 
     mov rax, 8
     mov rdi, [end_fd]
