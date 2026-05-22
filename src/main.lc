@@ -22,4 +22,14 @@ mov(rsi, [msg_comp])
 mov(rdx, [msg_comp_len])
 exec()
 
+mov(rdx, 3)
+mov([msg_len], rdx)
+mov(rax, 1)
+mov(rdi, 1)
+mov(rsi, [msg])
+mov(rdx, [msg_len])
+exec()
+
 exit(0)
+
+
