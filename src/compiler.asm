@@ -737,6 +737,7 @@ pickarg:
     jmp .skip_spaces_arg2
 
 .first_arg_variable:
+	inc rbx
 	xor rdi, rdi
 	jmp .first_arg_variable_loop
 	
@@ -772,15 +773,25 @@ pickarg:
 	inc rbx
 	
 .check_after_var:
+	cmp rbx, r12
+	jge errorline
+
 	mov al, [file + rbx]
 	cmp al, ','
-	je .more_args
+	je .more_args_variable
 	cmp al, ')'
 	je .arg_done
 	cmp al, ' '
 	je .skip_space_after
 	
+.more_args_variable:
+	inc rbx
+	jmp .second_arg_loop
+
 .skip_space_after:
+	cmp rbx, r12
+	jge errorline
+
 	inc rbx
 	jmp .check_after_var
 
@@ -1037,8 +1048,33 @@ cmdmov:
 cmdmov_reg_to_var:
 	mov rax, 1
 	mov rdi, 1
+	mov rsi, msg_done
+	mov rdx, 2
+	syscall
+	mov rax, 1
+	mov rdi, 1
 	mov rsi, cmd_arg_2
 	mov rdx, [cmd_arg_2_len]
+	syscall
+	mov rax, 1
+	mov rdi, 1
+	mov rsi, msg_done
+	mov rdx, 2
+	syscall
+	mov rax, 1
+	mov rdi, 1
+	mov rsi, msg_done
+	mov rdx, 2
+	syscall
+	mov rax, 1
+	mov rdi, 1
+	mov rsi, cmd_arg
+	mov rdx, [cmd_arg_len]
+	syscall
+	mov rax, 1
+	mov rdi, 1
+	mov rsi, msg_done
+	mov rdx, 2
 	syscall
 	
 	mov byte [is_addr], 0
