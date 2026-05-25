@@ -3,6 +3,15 @@ bits 64
 %define CODE_LIMIT 4096
 
 section .data
+	msg_debug: db "[DEBUG]"
+	msg_debug_len: equ $-msg_debug
+	debug_str: db "--debug",0
+	msg_debug_token: db " TOKEN: "
+	msg_debug_token_len: equ $-msg_debug_token
+	msg_debug_cmd_arg: db " CMD_ARG: "
+	msg_debug_cmd_arg_len: equ $-msg_debug_cmd_arg
+	msg_debug_cmd_arg_2: db " CMD_ARG_2: "
+	msg_debug_cmd_arg_2_len: equ $-msg_debug_cmd_arg_2
 	msg_done: db "[*] DONE", 10
 	msg_done_len: equ $-msg_done
 	msg_error_args: db "[X] ERROR ARGS ./compiler archive.lc output format",10
@@ -31,10 +40,22 @@ section .data
 	cmd_exec_str: db "exec",0
 	; MOV
 	cmd_mov_str: db "mov",0 
-	cmd_mov_rax: db "rax",0
-	cmd_mov_rdi: db "rdi",0
-	cmd_mov_rsi: db "rsi",0
-	cmd_mov_rdx: db "rdx",0
+	cmd_reg_rax: db "rax",0
+	cmd_reg_rdi: db "rdi",0
+	cmd_reg_rsi: db "rsi",0
+	cmd_reg_rdx: db "rdx",0
+	cmd_reg_rcx: db "rcx",0
+	cmd_reg_rbx: db "rbx",0
+	cmd_reg_rsp: db "rsp",0
+	cmd_reg_rbp: db "rbp",0
+	cmd_reg_r8: db "r8",0
+	cmd_reg_r9: db "r9",0
+	cmd_reg_r10: db "r10",0
+	cmd_reg_r11: db "r11",0
+	cmd_reg_r12: db "r12",0
+	cmd_reg_r13: db "r13",0
+	cmd_reg_r14: db "r14",0
+	cmd_reg_r15: db "r15",0
 	; VARIABLES
 	cmd_var_str: db "var",0
 	; START
@@ -185,6 +206,7 @@ section .bss
 	codgen_buffer: resb 32
 	is_addr: resq 1
 	is_address: resq 1
+	is_imediate: resq 1
 	var_symbols: resb 2048
 	symbol_count: resq 1
 	var_name: resb 64
@@ -197,6 +219,8 @@ section .bss
 	is_bin: resq 1
 	is_pe: resq 1
 	is_elf: resq 1
+	; DEBUG
+	debug: resq 1
 	
 section .text
 	global _start
@@ -217,7 +241,12 @@ _start:
 
 	mov rax, [rsp]
 	cmp rax, 4
-	jl error_args
+	je .init_compiler
+	cmp rax, 5
+	je .maybe_want_debug
+	jmp error_args
+
+.init_compiler:
 	mov rsi,[rsp+16]
 	xor rcx, rcx
 	
@@ -227,15 +256,26 @@ _start:
 	rep stosb
 	
 	xor rax, rax
-    mov [symbol_count], rax
-    mov r14, rax
-    mov r15, rax
-
-    mov byte [is_bin], 0
-    mov byte [is_pe], 0
-    mov byte [is_elf], 0
+   	mov [symbol_count], rax
+   	mov r14, rax
+   	mov r15, rax
+	
+   	mov byte [is_bin], 0
+	mov byte [is_pe], 0
+  	mov byte [is_elf], 0
 
 	jmp strlen_loop
+
+.maybe_want_debug:
+	mov rsi, [rsp+40]
+  	lea rdi, [debug_str]
+  	call strcmp
+ 	jc .want_debug
+	jmp error_args
+
+.want_debug:
+	mov byte [debug], 1
+	jmp .init_compiler
 
 ; --- FUNCTION: strlen_loop ---
 strlen_loop:
@@ -312,30 +352,12 @@ errorline:
 	syscall
 
 	call print_r13_as_int
-
-    mov rax, 1
-    mov rdi, 1
-    mov rsi, newline
-    mov rdx, 1
-    syscall
-    
-    mov rax, 1
-    mov rdi, 1
-    mov rsi, msg_done
-    mov rdx, 1
-    syscall
-    
-    mov rax, 1
-    mov rdi, 1
-    mov rsi, cmd_arg_2
-    mov rdx, 64
-    syscall
-    
-    mov rax, 1
-    mov rdi, 1
-    mov rsi, msg_done
-    mov rdx, 1
-    syscall
+	
+	mov rax, 1
+	mov rdi, 1
+	mov rsi, newline
+	mov rdx, 1
+	syscall
 
 	mov rax, 60
 	xor rdi, rdi 
@@ -349,48 +371,6 @@ errorlinecmd:
     syscall
 
 	call print_r13_as_int
-
-    mov rax, 1
-    mov rdi, 1
-    mov rsi, newline
-    mov rdx, 1
-    syscall
-    
-    mov rax, 1
-    mov rdi, 1
-    mov rsi, msg_done
-    mov rdx, 1
-    syscall
-    
-    mov rax, 1
-    mov rdi, 1
-    mov rsi, cmd_arg_2
-    mov rdx, 64
-    syscall
-    
-    mov rax, 1
-    mov rdi, 1
-    mov rsi, msg_done
-    mov rdx, 1
-    syscall
-    
-    mov rax, 1
-    mov rdi, 1
-    mov rsi, msg_done
-    mov rdx, 1
-    syscall
-    
-    mov rax, 1
-    mov rdi, 1
-    mov rsi, cmd_arg
-    mov rdx, 64
-    syscall
-    
-    mov rax, 1
-    mov rdi, 1
-    mov rsi, msg_done
-    mov rdx, 1
-    syscall
 
 	mov rax, 60
 	xor rdi, rdi 
@@ -582,32 +562,13 @@ haschar:
     jmp .hascharloop
 ; --- FUNCTION: endcmd ---
 endcmd:
-	mov byte [token + rdi], 0
+    mov byte [token + rdi], 0
     mov [token_len], rdi
     
     cmp rdi, 0
     je .check_end
-
-    mov rax, 1
-    mov rdi, 1
-    mov qword [codgen_buffer], " > "
-    lea rsi, [codgen_buffer]
-    mov rdx, 3
-    syscall
-
-    mov rax, 1
-    mov rdi, 1
-    mov rsi, token
-    mov rdx, [token_len]
-    syscall
-
-    mov rax, 1
-    mov rdi, 1
-    mov rsi, newline
-    mov rdx, 1
-    syscall
     
-	lea rsi, [token]
+    lea rsi, [token]
     lea rdi, [cmd_exit_str]
     call strcmp
     jc cmdexit
@@ -815,6 +776,9 @@ pickarg:
 
     cmp al, '['
     je .second_arg_variable
+
+    cmp al, '&'
+    je .second_arg_variable_imediate
     
     cmp al, 10
     je errorline
@@ -833,6 +797,11 @@ pickarg:
 	xor rdi, rdi
 	inc rbx
 	jmp .second_arg_variable_loop
+
+.second_arg_variable_imediate:
+	xor rdi, rdi
+	inc rbx
+	jmp .second_arg_variable_imediate_loop
 
 .second_arg_variable_loop:
 	cmp rbx, r12
@@ -858,10 +827,42 @@ pickarg:
 
 	jmp .second_arg_variable_loop
 
+.second_arg_variable_imediate_loop:
+	cmp rbx, r12
+	jge errorline
+	
+	mov al, [file + rbx]
+
+	cmp al, ']'
+	je errorline
+
+	cmp al, ' '
+	je errorline
+
+	cmp al, ')'
+	je .second_arg_variable_imediate_done
+
+	cmp al, 10
+	je errorline
+
+	mov [cmd_arg_2 + rdi], al
+	inc rdi
+	inc rbx
+
+	jmp .second_arg_variable_imediate_loop
+
 .second_arg_variable_done:
 	mov byte [cmd_arg_2 + rdi], 0
 	mov [cmd_arg_2_len], rdi
 	mov byte [is_addr], 1
+	inc rbx
+	ret
+
+.second_arg_variable_imediate_done:
+	mov byte [cmd_arg_2 + rdi], 0
+	mov [cmd_arg_2_len], rdi
+	mov byte [is_addr], 1
+	mov byte [is_imediate], 1
 	inc rbx
 	ret
 
@@ -898,6 +899,10 @@ cmdexit:
     rep movsb
     
     add r14, 22
+
+	cmp byte [debug], 1
+	jne cmpchar
+	call print_debug
         
     jmp cmpchar
 ; --- FUNCTION: cmdexit ---
@@ -920,7 +925,7 @@ cmdexec:
     je .inject_only_newline
     cmp rax, 5
     je .inject_only_carriage
-    jmp cmpchar
+    jmp errorline
 
 .inject_print:           ; exec(1) - PRINT
     lea rsi, [uefi_exec_opcodes]
@@ -975,6 +980,10 @@ cmdexec:
     rep movsb
     add r14, rcx
 
+	cmp byte [debug], 1
+	jne cmpchar
+	call print_debug
+
     jmp cmpchar
 
 .copy:
@@ -984,6 +993,10 @@ cmdexec:
     rep movsb
     add r14, r11 
     pop rcx
+
+	cmp byte [debug], 1
+	jne cmpchar
+	call print_debug
     
     jmp cmpchar
     
@@ -1001,6 +1014,10 @@ cmdexec:
     pop rcx
     
     add r14, 2
+
+	cmp byte [debug], 1
+	jne cmpchar
+	call print_debug
         
     jmp cmpchar
 ; --- FUNCTION: cmdexec ---
@@ -1009,6 +1026,7 @@ cmdexec:
 cmdmov:
 	mov byte [is_addr], 0
 	mov byte [is_address], 0
+	mov byte [is_imediate], 0
 	xor rax, rax
 	xor rdx, rdx
 	
@@ -1017,93 +1035,106 @@ cmdmov:
 	cmp byte [is_address], 1
 	je cmdmov_reg_to_var
 	
-	mov rax, 1
-	mov rdi, 1
-	mov rsi, cmd_arg_2
-	mov rdx, [cmd_arg_2_len]
-	syscall
-	
-	mov eax, [cmd_mov_rax]
+	mov eax, [cmd_reg_rax]
 	mov edx, [cmd_arg]
 	cmp eax, edx
 	je cmdmov_rax
 
-	mov eax, [cmd_mov_rdi]
+	mov eax, [cmd_reg_rdi]
 	cmp eax, edx
 	je cmdmov_rdi
 
-	mov eax, [cmd_mov_rsi]
+	mov eax, [cmd_reg_rsi]
 	cmp eax, edx
 	je cmdmov_rsi
 
-	mov eax, [cmd_mov_rdx]
+	mov eax, [cmd_reg_rdx]
 	cmp eax, edx
 	je cmdmov_rdx
+	
+	mov eax, [cmd_reg_rcx]
+	cmp eax, edx
+	je cmdmov_rcx
+	
+	mov eax, [cmd_reg_rbx]
+	cmp eax, edx
+	je cmdmov_rbx
+	
+	;mov eax, [cmd_reg_rsp]
+	;cmp eax, edx
+	;je cmdmov_rsp
+	
+	;mov eax, [cmd_reg_rbp]
+	;cmp eax, edx
+	;je cmdmov_rbp
 
 	cmp word [cmd_arg], "al"
 	je cmdmov_al
 	
-	jmp errorline
-
-cmdmov_reg_to_var:
-	mov rax, 1
-	mov rdi, 1
-	mov rsi, msg_done
-	mov rdx, 2
-	syscall
-	mov rax, 1
-	mov rdi, 1
-	mov rsi, cmd_arg_2
-	mov rdx, [cmd_arg_2_len]
-	syscall
-	mov rax, 1
-	mov rdi, 1
-	mov rsi, msg_done
-	mov rdx, 2
-	syscall
-	mov rax, 1
-	mov rdi, 1
-	mov rsi, msg_done
-	mov rdx, 2
-	syscall
-	mov rax, 1
-	mov rdi, 1
-	mov rsi, cmd_arg
-	mov rdx, [cmd_arg_len]
-	syscall
-	mov rax, 1
-	mov rdi, 1
-	mov rsi, msg_done
-	mov rdx, 2
-	syscall
+	cmp word [cmd_arg], "bl"
+	je cmdmov_bl
 	
+	cmp word [cmd_arg], "cl"
+	je cmdmov_cl
+	
+	cmp word [cmd_arg], "dl"
+	je cmdmov_dl
+	
+	jmp errorline
+; ######################
+; ##### REG TO VAR #####
+; ######################
+cmdmov_reg_to_var:
 	mov byte [is_addr], 0
 	mov byte [is_address], 1
 	
 	lea rsi, [cmd_arg_2]
-    lea rdi, [cmd_mov_rax]
+    lea rdi, [cmd_reg_rax]
     call strcmp
 	jc cmdmov_rax
 	
 	lea rsi, [cmd_arg_2]
-    lea rdi, [cmd_mov_rdi]
+    lea rdi, [cmd_reg_rdi]
     call strcmp
 	jc cmdmov_rdi
 	
 	lea rsi, [cmd_arg_2]
-    lea rdi, [cmd_mov_rsi]
+    lea rdi, [cmd_reg_rsi]
     call strcmp
     jc cmdmov_rsi
 	
 	lea rsi, [cmd_arg_2]
-    lea rdi, [cmd_mov_rdx]
+    lea rdi, [cmd_reg_rdx]
     call strcmp
     jc cmdmov_rdx
+	
+	lea rsi, [cmd_arg_2]
+    lea rdi, [cmd_reg_rcx]
+    call strcmp
+    jc cmdmov_rcx
+	
+	lea rsi, [cmd_arg_2]
+    lea rdi, [cmd_reg_rbx]
+    call strcmp
+    jc cmdmov_rbx
 	
 	cmp word [cmd_arg_2], "al"
 	je cmdmov_al
 	
+	cmp word [cmd_arg_2], "cl"
+	je cmdmov_cl
+	
+	cmp word [cmd_arg_2], "bl"
+	je cmdmov_bl
+	
+	cmp word [cmd_arg_2], "dl"
+	je cmdmov_dl
+	
 	jmp errorline
+
+; ######################
+; ##### CMDMOV_RAX #####
+; ######################
 
 cmdmov_rax:
 	cmp byte [is_addr], 1
@@ -1113,101 +1144,60 @@ cmdmov_rax:
 
 	mov byte [codgen_buffer + 0], 0x48
 	mov byte [codgen_buffer + 1], 0xB8
-
-	call atoi_arg_2
-
-	mov [codgen_buffer + 2], rax
-
-	lea rsi, [codgen_buffer]
-	lea rdi, [code_buffer + r14]
-	mov rcx, 10
-	rep movsb
 	
-	add r14, 10
-
-	jmp cmpchar
+	mov r9, 0
+	
+	jmp cmp_reg_reg
 
 .mov_rax_mem:
     mov al, 0x05
     jmp generic_mov_mem
+
+; ######################
+; ##### CMDMOV_RDI #####
+; ######################
 
 cmdmov_rdi:
 	cmp byte [is_addr], 1
 	je .mov_rdi_mem
 	cmp byte [is_address], 1
 	je .mov_rdi_mem
-	
+
 	mov byte [codgen_buffer + 0], 0x48
 	mov byte [codgen_buffer + 1], 0xBF
-
-	call atoi_arg_2
-
-	mov [codgen_buffer + 2], rax
-
-	lea rsi, [codgen_buffer]
-	lea rdi, [code_buffer + r14]
-	mov rcx, 10
-	rep movsb
 	
-	add r14, 10
-
-	jmp cmpchar
+	mov r9, 7
+	
+	jmp cmp_reg_reg
 	
 .mov_rdi_mem:
     mov al, 0x3D
     jmp generic_mov_mem
 
+; ######################
+; ##### CMDMOV_RSI #####
+; ######################
+
 cmdmov_rsi:
 	cmp byte [is_addr], 1
 	je .mov_rsi_mem
 	cmp byte [is_address], 1
-	je .mov_rsi_fmem
-	
+	je .mov_rsi_mem
+
 	mov byte [codgen_buffer + 0], 0x48
 	mov byte [codgen_buffer + 1], 0xBE
-
-	call atoi_arg_2
-
-	mov [codgen_buffer + 2], rax
-
-	lea rsi, [codgen_buffer]
-	lea rdi, [code_buffer + r14]
-	mov rcx, 10
-	rep movsb
 	
-	add r14, 10
-
-	jmp cmpchar
+	mov r9, 6
+	
+	jmp cmp_reg_reg
 
 .mov_rsi_mem:
-	mov qword [codgen_buffer], 0
-    mov qword [codgen_buffer + 2], 0
-
-    mov byte [codgen_buffer + 0], 0x48
-    mov byte [codgen_buffer + 1], 0x8D
-    mov byte [codgen_buffer + 2], 0x35
-
-    call var_to_addr
-    
-    mov r8, CODE_LIMIT
-    add r8, rax         
-    mov rcx, r14
-    add rcx, 7
-    sub r8, rcx
-    mov [codgen_buffer + 3], r8d
-
-    lea rsi, [codgen_buffer]
-    lea rdi, [code_buffer + r14]
-    mov rcx, 7
-    rep movsb
-    
-    add r14, 7
-    mov byte [is_addr], 0
-    jmp cmpchar
-
-.mov_rsi_fmem:
     mov al, 0x35
     jmp generic_mov_mem
+
+; ######################
+; ##### CMDMOV_RDX #####
+; ######################
 
 cmdmov_rdx:
 	cmp byte [is_addr], 1
@@ -1217,29 +1207,66 @@ cmdmov_rdx:
 	
 	mov byte [codgen_buffer + 0], 0x48
 	mov byte [codgen_buffer + 1], 0xBA
-
-	call atoi_arg_2
-
-	mov [codgen_buffer + 2], rax
-
-	lea rsi, [codgen_buffer]
-	lea rdi, [code_buffer + r14]
-	mov rcx, 10
-	rep movsb
 	
-	add r14, 10
-
-	jmp cmpchar
+	mov r9, 2
+	
+	jmp cmp_reg_reg
 	
 .mov_rdx_mem:
 	mov al, 0x15
 	jmp generic_mov_mem
+	
+; ######################
+; ##### CMDMOV_RCX #####
+; ######################
+	
+cmdmov_rcx:
+	cmp byte [is_addr], 1
+	je .mov_rcx_mem
+	cmp byte [is_address], 1
+	je .mov_rcx_mem
+
+	mov byte [codgen_buffer + 0], 0x48
+	mov byte [codgen_buffer + 1], 0xB9
+
+	mov r9, 1
+
+	jmp cmp_reg_reg
+	
+.mov_rcx_mem:
+	mov al, 0x0D
+	jmp generic_mov_mem
+	
+; ######################
+; ##### CMDMOV_RBX #####
+; ######################
+	
+cmdmov_rbx:
+	cmp byte [is_addr], 1
+	je .mov_rbx_mem
+	cmp byte [is_address], 1
+	je .mov_rbx_mem
+
+	mov byte [codgen_buffer + 0], 0x48
+	mov byte [codgen_buffer + 1], 0xBB
+	
+	mov r9, 3
+
+	jmp cmp_reg_reg
+	
+.mov_rbx_mem:
+	mov al, 0x1D
+	jmp generic_mov_mem
+
+; #####################
+; ##### CMDMOV_AL #####
+; #####################
 
 cmdmov_al:
 	cmp byte [is_addr], 1
 	je .mov_al_mem
 	cmp byte [is_address], 1
-	je .mov_al_fmem
+	je .mov_al_mem
 	
 	mov byte [codgen_buffer + 0], 0xB0
 
@@ -1254,51 +1281,172 @@ cmdmov_al:
 	
 	add r14, 2
 
+	cmp byte [debug], 1
+	jne cmpchar
+	call print_debug
+
 	jmp cmpchar
 	
 .mov_al_mem:
-    mov byte [codgen_buffer + 0], 0x8A
-    mov byte [codgen_buffer + 1], 0x05
+    mov al, 0x05
+	jmp generic_mov_mem_byte
+	
+; #####################
+; ##### CMDMOV_CL #####
+; #####################
+	
+cmdmov_cl:
+	cmp byte [is_addr], 1
+	je .mov_cl_mem
+	cmp byte [is_address], 1
+	je .mov_cl_mem
+	
+	mov byte [codgen_buffer + 0], 0xB1
+
+	call atoi_arg_2
+
+	mov [codgen_buffer + 1], eax
+
+	lea rsi, [codgen_buffer]
+	lea rdi, [code_buffer + r14]
+	mov rcx, 2
+	rep movsb
+	
+	add r14, 2
+
+	cmp byte [debug], 1
+	jne cmpchar
+	call print_debug
+
+	jmp cmpchar
+	
+.mov_cl_mem:
+    mov al, 0x0D
+	jmp generic_mov_mem_byte
+	
+; #####################
+; ##### CMDMOV_DL #####
+; #####################
+
+cmdmov_dl:
+	cmp byte [is_addr], 1
+	je .mov_dl_mem
+	cmp byte [is_address], 1
+	je .mov_dl_mem
+	
+	mov byte [codgen_buffer + 0], 0xB2
+
+	call atoi_arg_2
+
+	mov [codgen_buffer + 1], eax
+
+	lea rsi, [codgen_buffer]
+	lea rdi, [code_buffer + r14]
+	mov rcx, 2
+	rep movsb
+	
+	add r14, 2
+
+	cmp byte [debug], 1
+	jne cmpchar
+	call print_debug
+
+	jmp cmpchar
+	
+.mov_dl_mem:
+    mov al, 0x15
+	jmp generic_mov_mem_byte
+
+; #####################
+; ##### CMDMOV_BL #####
+; #####################
+
+cmdmov_bl:
+	cmp byte [is_addr], 1
+	je .mov_bl_mem
+	cmp byte [is_address], 1
+	je .mov_bl_mem
+	
+	mov byte [codgen_buffer + 0], 0xB3
+
+	call atoi_arg_2
+
+	mov [codgen_buffer + 1], eax
+
+	lea rsi, [codgen_buffer]
+	lea rdi, [code_buffer + r14]
+	mov rcx, 2
+	rep movsb
+	
+	add r14, 2
+
+	cmp byte [debug], 1
+	jne cmpchar
+	call print_debug
+
+	jmp cmpchar
+	
+.mov_bl_mem:
+    mov al, 0x1D
+	jmp generic_mov_mem_byte
+	
+; ################################
+; ##### GENERIC_MOV_MEM_BYTE #####
+; ################################
+	
+generic_mov_mem_byte:
+	push rax
+    lea rdi, [codgen_buffer]
+    xor rax, rax
+    mov rcx, 4
+    rep stosq
+    pop rax
     
-    call var_to_addr
+    cmp byte [is_addr], 1
+    je .mov_is_addr
+    cmp byte [is_address], 1
+    je .mov_is_address
+    jmp .continue_gen
+
+.mov_is_addr:
+    mov byte [codgen_buffer + 0], 0x8A
+    mov [codgen_buffer + 1], al
+    jmp .continue_gen
+
+.mov_is_address:
+    mov byte [codgen_buffer + 0], 0x88
+    mov [codgen_buffer + 1], al
+    jmp .continue_gen
+    
+.continue_gen:	
+	call var_to_addr
     
     mov r8, CODE_LIMIT
     add r8, rax
     mov rcx, r14
     add rcx, 6
     sub r8, rcx
-    
     mov [codgen_buffer + 2], r8d
-    
+
     lea rsi, [codgen_buffer]
     lea rdi, [code_buffer + r14]
     mov rcx, 6
     rep movsb
     
     add r14, 6
+    mov byte [is_addr], 0
+    mov byte [is_address], 0
+	mov byte [is_imediate], 0
+	
+	cmp byte [debug], 1
+	jne cmpchar
+	call print_debug
+
     jmp cmpchar
 
-.mov_al_fmem:
-	mov byte [codgen_buffer + 0], 0x88
-    mov byte [codgen_buffer + 1], 0x05
-    
-    call var_to_addr
-    
-    mov r8, CODE_LIMIT
-    add r8, rax
-    mov rcx, r14
-    add rcx, 6
-    sub r8, rcx
-    
-    mov [codgen_buffer + 2], r8d
-    
-    lea rsi, [codgen_buffer]
-    lea rdi, [code_buffer + r14]
-    mov rcx, 6
-    rep movsb
-    
-    add r14, 6
-    jmp cmpchar
+; ###########################
+; ##### GENERIC_MOV_MEM #####
+; ###########################
 
 generic_mov_mem:
 	push rax
@@ -1309,12 +1457,19 @@ generic_mov_mem:
     pop rax
     
     mov byte [codgen_buffer + 0], 0x48
+	cmp byte [is_imediate], 1
+	je .mov_is_imediate
     cmp byte [is_addr], 1
     je .mov_is_addr
     cmp byte [is_address], 1
     je .mov_is_address
     jmp .continue_gen
     
+.mov_is_imediate:
+	mov byte [codgen_buffer + 1], 0x8D
+	mov [codgen_buffer + 2], al
+	jmp .continue_gen
+
 .mov_is_addr:
     mov byte [codgen_buffer + 1], 0x8B
     mov [codgen_buffer + 2], al
@@ -1343,6 +1498,125 @@ generic_mov_mem:
     add r14, 7
     mov byte [is_addr], 0
     mov byte [is_address], 0
+	mov byte [is_imediate], 0
+	
+	cmp byte [debug], 1
+	jne cmpchar
+	call print_debug
+
+    jmp cmpchar
+
+; #######################
+; ##### CMP_REG_REG #####
+; #######################
+
+cmp_reg_reg:
+	lea rsi, [cmd_arg_2]
+    lea rdi, [cmd_reg_rax]
+    call strcmp
+	jc cmdmov_reg_rax
+	
+	lea rsi, [cmd_arg_2]
+    lea rdi, [cmd_reg_rdi]
+    call strcmp
+	jc cmdmov_reg_rdi
+	
+	lea rsi, [cmd_arg_2]
+    lea rdi, [cmd_reg_rsi]
+    call strcmp
+    jc cmdmov_reg_rsi
+	
+	lea rsi, [cmd_arg_2]
+    lea rdi, [cmd_reg_rdx]
+    call strcmp
+    jc cmdmov_reg_rdx
+	
+	lea rsi, [cmd_arg_2]
+    lea rdi, [cmd_reg_rcx]
+    call strcmp
+    jc cmdmov_reg_rcx
+	
+	lea rsi, [cmd_arg_2]
+    lea rdi, [cmd_reg_rbx]
+    call strcmp
+    jc cmdmov_reg_rbx
+
+	call atoi_arg_2
+
+	mov [codgen_buffer + 2], rax
+
+	lea rsi, [codgen_buffer]
+	lea rdi, [code_buffer + r14]
+	mov rcx, 10
+	rep movsb
+	
+	add r14, 10
+
+	cmp byte [debug], 1
+	jne cmpchar
+	call print_debug
+
+	jmp cmpchar
+	
+cmdmov_reg_rax:
+	mov rax, 0
+	shl rax, 3
+	add rax, 0xC0
+	add rax, r9
+	jmp generic_reg_reg
+	
+cmdmov_reg_rsi:
+	mov rax, 6
+	shl rax, 3
+	add rax, 0xC0
+	add rax, r9
+	jmp generic_reg_reg
+	
+cmdmov_reg_rdi:
+	mov rax, 7
+	shl rax, 3
+	add rax, 0xC0
+	add rax, r9
+	jmp generic_reg_reg
+	
+cmdmov_reg_rdx:
+	mov rax, 2
+	shl rax, 3
+	add rax, 0xC0
+	add rax, r9
+	jmp generic_reg_reg
+	
+cmdmov_reg_rcx:
+	mov rax, 1
+	shl rax, 3
+	add rax, 0xC0
+	add rax, r9
+	jmp generic_reg_reg
+	
+cmdmov_reg_rbx:
+	mov rax, 3
+	shl rax, 3
+	add rax, 0xC0
+	add rax, r9
+	jmp generic_reg_reg
+	
+generic_reg_reg:
+	mov byte [codgen_buffer + 0], 0x48
+	mov byte [codgen_buffer + 1], 0x89
+	
+	mov byte [codgen_buffer + 2], al
+	
+	lea rsi, [codgen_buffer]
+    lea rdi, [code_buffer + r14]
+    mov rcx, 3
+    rep movsb
+	
+	add r14, 3
+	
+	cmp byte [debug], 1
+	jne cmpchar
+	call print_debug
+	
     jmp cmpchar
     
 ; --- FUNCTION: cmdmov ---
@@ -1366,24 +1640,10 @@ var_to_addr:
 
 .use_arg1:
     lea rsi, [cmd_arg]
-    
-    push rcx
-    mov rax, 1
-    mov rdi, 1
-    mov rdx, [cmd_arg_len]
-    syscall
-    pop rcx
     jmp .search_loop
 
 .use_arg2:
     lea rsi, [cmd_arg_2]
-    
-    push rcx
-    mov rax, 1
-    mov rdi, 1
-    mov rdx, [cmd_arg_2_len]
-    syscall
-    pop rcx
     jmp .search_loop
 
 .search_loop:
@@ -1593,6 +1853,11 @@ cmdvar:
     mov qword [var_value_len], 0
 
     inc rbx
+
+	cmp byte [debug], 1
+	jne cmpchar
+	call print_debug
+
     jmp cmpchar
 
 atoi_int_var:
@@ -1626,8 +1891,80 @@ cmdstart:
     mov r11, rcx 
     rep movsb
     add r14, r11 
+
+	cmp byte [debug], 1
+	jne cmpchar
+	call print_debug
     
     jmp cmpchar
+
+print_debug:
+	push rax
+    	push rbx
+   	push rcx
+  	push rdx
+  	push rsi
+  	push rdi
+ 	push r11
+	; [DEBUG]
+	mov rax, 1
+	mov rdi, 1
+	mov rsi, msg_debug
+	mov rdx, msg_debug_len
+	syscall
+	; TOKEN
+	mov rax, 1
+	mov rdi, 1
+	mov rsi, msg_debug_token
+	mov rdx, msg_debug_token_len
+	syscall
+
+	mov rax, 1
+	mov rdi, 1
+	mov rsi, token
+	mov rdx, qword [token_len]
+	syscall
+	; CMD_ARG
+	mov rax, 1
+	mov rdi, 1
+	mov rsi, msg_debug_cmd_arg
+	mov rdx, msg_debug_cmd_arg_len
+	syscall
+
+	mov rax, 1
+	mov rdi, 1
+	mov rsi, cmd_arg
+	mov rdx, qword [cmd_arg_len]
+	syscall
+	; CMD_ARG_2
+	mov rax, 1
+	mov rdi, 1
+	mov rsi, msg_debug_cmd_arg_2
+	mov rdx, msg_debug_cmd_arg_2_len
+	syscall
+
+	mov rax, 1
+	mov rdi, 1
+	mov rsi, cmd_arg_2
+	mov rdx, qword [cmd_arg_2_len]
+	syscall
+	
+	mov rax, 1
+   	mov rdi, 1
+    	lea rsi, [newline]
+   	mov rdx, 1
+    	syscall
+
+.fim_debug:
+    pop r11
+    pop rdi
+    pop rsi
+    pop rdx
+    pop rcx
+    pop rbx
+    pop rax
+    
+    ret
 	
 ; --- FUNCTION: write_pe_header ---
 write_pe_header:
