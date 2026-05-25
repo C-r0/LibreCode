@@ -1702,13 +1702,42 @@ cmdvar:
 .name_loop:
     mov al, [file + rbx]
     cmp al, ' '
-    je .after_name_skip
+    je errorline
     cmp al, '='
-    je .after_name
+    je errorline
+	cmp al, '['
+	je .picklen_var
     mov [var_name + rdi], al
     inc rdi
     inc rbx
     jmp .name_loop
+
+.picklen_var:
+	inc rdi
+	mov byte [var_name + rdi], 0
+	mov [var_name_len], rdi
+	inc rbx
+	xor rdi, rdi
+	
+.picklen_var_loop:
+	mov al, [file + rbx]
+	cmp al, ' '
+	je errorline
+	cmp al, '='
+	je errorline
+	cmp al, ']'
+	je .endlen_var
+	mov [var_value + rdi], al
+	inc rdi
+	inc rbx
+	jmp .picklen_var_loop
+	
+.endlen_var:
+	call atoi_int_var
+	
+	mov qword [var_value], 0
+	
+	mov [var_value_len], rax
 
 .after_name_skip:
     inc rbx
@@ -1717,11 +1746,13 @@ cmdvar:
     je .after_name
     cmp al, ' '
     je .after_name_skip
+	cmp al, 10
+	je .done
+	cmp al, 13
+	je .done
     jmp errorline
 
 .after_name:
-    mov byte [var_name + rdi], 0
-    mov [var_name_len], rdi
     cmp byte [var_name_len], 32
     je errorline
 
@@ -1772,7 +1803,6 @@ cmdvar:
     inc rdi
     mov byte [var_value + rdi], 0
     inc rdi
-    mov [var_value_len], rdi
     inc rbx
     jmp .done
 .get_int:
@@ -1804,14 +1834,11 @@ cmdvar:
     
     mov [var_value], rax
     
-    mov qword [var_value_len], 8
-    
     jmp .done
 
 .done:
     cmp qword [var_value_len], 8
     je .skip_len_fix
-    mov [var_value_len], rdi
 .skip_len_fix:
     mov rdi, var_symbols
     mov rax, [symbol_count]
