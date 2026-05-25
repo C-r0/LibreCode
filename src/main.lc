@@ -6,30 +6,34 @@ var msg_comp_len = 11
 
 mov(rax, 1)
 mov(rdi, 1)
-mov(rsi, [msg])
+mov(rsi, &msg)
 mov(rdx, [msg_len])
 exec()
 
 mov(rax, 1)
 mov(rdi, 1)
-mov(rsi, [newline])
+mov(rsi, &newline)
 mov(rdx, 1)
 exec()
 
 mov(rax, 1)
 mov(rdi, 1)
-mov(rsi, [msg_comp])
+mov(rsi, &msg_comp)
 mov(rdx, [msg_comp_len])
 exec()
 
-mov(rdx, 3)
-mov([msg_len], rdx)
+mov(rbx, 3)
+mov(rdx, rbx)
+
 mov(rax, 1)
 mov(rdi, 1)
-mov(rsi, [msg])
-mov(rdx, [msg_len])
+mov(rsi, &msg)
+exec()
+
+mov(rax, 1)
+mov(rdi, 1)
+mov(rsi, &newline)
+mov(rdx, 1)
 exec()
 
 exit(0)
-
-
