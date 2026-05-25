@@ -1,35 +1,41 @@
-var newline = 10
-var msg = "LibreCompiler v1.0.0"
-var msg_len = 20
-var msg_comp = "Compiling: "
-var msg_comp_len = 11
+/ VARIAVEIS
+var newline[1] = 10
+var msg[20] = "LibreCompiler v1.0.0"
+var msg_comp[11] = "Compiling: "
+var buffer[1000]
 
+/ LibreCompiler
 mov(rax, 1)
 mov(rdi, 1)
 mov(rsi, &msg)
-mov(rdx, [msg_len])
+mov(rdx, 20)
 exec()
 
+/ NEWLINE
 mov(rax, 1)
 mov(rdi, 1)
 mov(rsi, &newline)
 mov(rdx, 1)
 exec()
 
+/ Compiling
 mov(rax, 1)
 mov(rdi, 1)
 mov(rsi, &msg_comp)
-mov(rdx, [msg_comp_len])
+mov(rdx, 11)
 exec()
 
+///// Changing rdx
 mov(rbx, 3)
 mov(rdx, rbx)
 
+/ LibreCompiler with new rdx
 mov(rax, 1)
 mov(rdi, 1)
-mov(rsi, &msg)
+mov(rsi, &msg) / MSG, you can comment on commands too
 exec()
 
+/ Newline
 mov(rax, 1)
 mov(rdi, 1)
 mov(rsi, &newline)
