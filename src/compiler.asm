@@ -541,6 +541,8 @@ haschar:
     je endcmd
     cmp al, '='
     je endcmd
+	cmp al, '/'
+	je comment
     
     cmp al, 9
     je .skip
@@ -560,6 +562,19 @@ haschar:
     cmp rbx, r12
     jae endarchive
     jmp .hascharloop
+; --- FUNCTION: comment ---
+comment:
+	mov al, [file + rbx]
+	
+	cmp al, 10
+	je .endcomment
+	
+	inc rbx
+	jmp comment
+
+.endcomment:
+	inc rbx
+	jmp cmpchar
 ; --- FUNCTION: endcmd ---
 endcmd:
     mov byte [token + rdi], 0
