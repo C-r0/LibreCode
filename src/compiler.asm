@@ -69,6 +69,10 @@ section .data
 	cmd_func_str: db "func",0
 	cmd_end_str: db "end",0
 	cmd_call_str: db "call",0
+	cmd_cmp_str: db "cmp",0
+	cmd_je_str: db "je",0
+	; RANDOM
+	cmd_inc_str: db "inc",0 
 	; FORMATS
 	format_pe: db "--pe",0
 	format_bin: db "--bin",0
@@ -77,8 +81,8 @@ section .data
 	uefi_exec_opcodes:
 		db 0x48, 0x8b, 0x45, 0x40    ; mov rax, [r12 + 64] (Pega ConOut da SystemTable)
 		db 0x48, 0x89, 0xc1          ; mov rcx, rax        (RCX = ConOut, 1º argumento)
-		db 0x48, 0x8b, 0x40, 0x08    ; mov rax, [rax + 8]  (RAX = função OutputString)
-		db 0x48, 0x89, 0xf2          ; mov rdx, rsi        (2º argumento = Sua string em RSI)
+		db 0x48, 0x8b, 0x40, 0x08    ; mov rax, [rax + 8]  (RAX = OutputString)
+		db 0x48, 0x89, 0xf2          ; mov rdx, rsi
 		db 0x48, 0x83, 0xec, 0x28    ; sub rsp, 32         (Shadow Space)
 		db 0xff, 0xd0                ; call rax            (Chama a UEFI)
 		db 0x48, 0x83, 0xc4, 0x28    ; add rsp, 32
@@ -648,6 +652,21 @@ endcmd:
     lea rdi, [cmd_call_str]
     call strcmp
     jc cmdcall
+	
+	lea rsi, [token]
+    lea rdi, [cmd_cmp_str]
+    call strcmp
+    jc cmdcmp
+	
+	lea rsi, [token]
+    lea rdi, [cmd_je_str]
+    call strcmp
+    jc cmdje
+	
+	lea rsi, [token]
+    lea rdi, [cmd_inc_str]
+    call strcmp
+    jc cmdinc
 
     jmp errorlinecmd
     
@@ -2206,6 +2225,541 @@ cmdcall:
 	mov [rdi], rax
 	
 	inc qword [call_depends_count]
+	
+	cmp byte [debug], 1
+	jne cmpchar
+	call print_debug
+	
+	jmp cmpchar
+
+; --- FUNCTION: cmdcmp ---
+cmdcmp:
+	call pickarg
+	
+	lea rsi, [cmd_arg]
+    lea rdi, [cmd_reg_rax]
+    call strcmp
+	jc cmdcmp_reg_rax
+	
+	lea rsi, [cmd_arg]
+    lea rdi, [cmd_reg_rdi]
+    call strcmp
+	jc cmdcmp_reg_rdi
+	
+	lea rsi, [cmd_arg]
+    lea rdi, [cmd_reg_rsi]
+    call strcmp
+    jc cmdcmp_reg_rsi
+	
+	lea rsi, [cmd_arg]
+    lea rdi, [cmd_reg_rdx]
+    call strcmp
+    jc cmdcmp_reg_rdx
+	
+	lea rsi, [cmd_arg]
+    lea rdi, [cmd_reg_rcx]
+    call strcmp
+    jc cmdcmp_reg_rcx
+	
+	lea rsi, [cmd_arg]
+    lea rdi, [cmd_reg_rbx]
+    call strcmp
+    jc cmdcmp_reg_rbx
+	
+	cmp word [cmd_arg], "al"
+	je cmdcmp_al
+	
+	cmp word [cmd_arg], "cl"
+	je cmdcmp_cl
+	
+	cmp word [cmd_arg], "bl"
+	je cmdcmp_bl
+	
+	cmp word [cmd_arg], "dl"
+	je cmdcmp_dl
+	
+cmdcmp_reg_rax:
+	call cmp_arg_2_reg
+	
+	cmp rsi, 1
+	je cmp_rax_rcx
+	cmp rsi, 2
+	je cmp_rax_rdx
+	cmp rsi, 3
+	je cmp_rax_rbx
+	cmp rsi, 6
+	je cmp_rax_rsi
+	cmp rsi, 7
+	je cmp_rax_rdi
+	jmp errorline
+	
+cmdcmp_reg_rdi:
+	call cmp_arg_2_reg
+	
+	cmp rsi, 0
+	je cmp_rax_rdi
+	cmp rsi, 1
+	je cmp_rdi_rcx
+	cmp rsi, 2
+	je cmp_rdi_rdx
+	cmp rsi, 3
+	je cmp_rdi_rbx
+	cmp rsi, 6
+	je cmp_rdi_rsi
+	jmp errorline
+	
+cmdcmp_reg_rsi:
+	call cmp_arg_2_reg
+	
+	cmp rsi, 0
+	je cmp_rax_rsi
+	cmp rsi, 1
+	je cmp_rsi_rcx
+	cmp rsi, 2
+	je cmp_rsi_rdx
+	cmp rsi, 3
+	je cmp_rsi_rbx
+	cmp rsi, 7
+	je cmp_rdi_rsi
+	jmp errorline
+	
+cmdcmp_reg_rdx:
+	call cmp_arg_2_reg
+	
+	cmp rsi, 0
+	je cmp_rax_rdx
+	cmp rsi, 1
+	je cmp_rdx_rcx
+	cmp rsi, 3
+	je cmp_rdx_rbx
+	cmp rsi, 6
+	je cmp_rsi_rdx
+	cmp rsi, 7
+	je cmp_rdi_rdx
+	jmp errorline
+	
+cmdcmp_reg_rcx:
+	call cmp_arg_2_reg
+	
+	cmp rsi, 0
+	je cmp_rax_rcx
+	cmp rsi, 2
+	je cmp_rdx_rcx
+	cmp rsi, 3
+	je cmp_rcx_rbx
+	cmp rsi, 6
+	je cmp_rsi_rcx
+	cmp rsi, 7
+	je cmp_rdi_rcx
+	jmp errorline
+	
+cmdcmp_reg_rbx:
+	call cmp_arg_2_reg
+	
+	cmp rsi, 0
+	je cmp_rax_rbx
+	cmp rsi, 1
+	je cmp_rcx_rbx
+	cmp rsi, 2
+	je cmp_rdx_rbx
+	cmp rsi, 6
+	je cmp_rsi_rbx
+	cmp rsi, 7
+	je cmp_rdi_rbx
+	jmp errorline
+	
+cmp_rax_rcx:
+	mov al, 0xC8
+	jmp continue_cmp
+	
+cmp_rax_rdx:
+	mov al, 0xD0
+	jmp continue_cmp
+	
+cmp_rax_rbx:
+	mov al, 0xD8
+	jmp continue_cmp
+	
+cmp_rax_rsi:
+	mov al, 0xF0
+	jmp continue_cmp
+	
+cmp_rax_rdi:
+	mov al, 0xF8
+	jmp continue_cmp
+	
+cmp_rdi_rcx:
+	mov al, 0xCF
+	jmp continue_cmp
+	
+cmp_rdi_rdx:
+	mov al, 0xD7
+	jmp continue_cmp
+	
+cmp_rdi_rbx:
+	mov al, 0xDF
+	jmp continue_cmp
+	
+cmp_rdi_rsi:
+	mov al, 0xF7
+	jmp continue_cmp
+	
+cmp_rsi_rcx:
+	mov al, 0xCE
+	jmp continue_cmp
+	
+cmp_rsi_rdx:
+	mov al, 0xD6
+	jmp continue_cmp
+	
+cmp_rsi_rbx:
+	mov al, 0xDE
+	jmp continue_cmp
+	
+cmp_rdx_rcx:
+	mov al, 0xCA
+	jmp continue_cmp
+	
+cmp_rdx_rbx:
+	mov al, 0xDA
+	jmp continue_cmp
+	
+cmp_rcx_rbx:
+	mov al, 0xD9
+	jmp continue_cmp
+	
+continue_cmp:
+	mov word [codgen_buffer + 0], 0x3948
+	mov byte [codgen_buffer + 2], al
+	
+	lea rsi, [codgen_buffer]
+	lea rdi, [code_buffer + r14]
+	mov rcx, 3
+	rep movsb
+	
+	add r14, 3
+	
+	cmp byte [debug], 1
+	jne cmpchar
+	call print_debug
+	
+	jmp cmpchar
+	
+cmdcmp_al:
+	call cmp_arg_2_reg
+
+	cmp rsi, 11
+	je cmp_al_cl
+	cmp rsi, 12
+	je cmp_al_dl
+	cmp rsi, 13
+	je cmp_al_bl
+	jmp errorline
+	
+cmdcmp_bl:
+	call cmp_arg_2_reg
+	
+	cmp rsi, 10
+	je cmp_al_bl
+	cmp rsi, 11
+	je cmp_bl_cl
+	cmp rsi, 12
+	je cmp_bl_dl
+	jmp errorline
+	
+cmdcmp_cl:
+	call cmp_arg_2_reg
+	
+	cmp rsi, 10
+	je cmp_al_cl
+	cmp rsi, 12
+	je cmp_cl_dl
+	cmp rsi, 13
+	je cmp_bl_cl
+	jmp errorline
+	
+cmdcmp_dl:
+	call cmp_arg_2_reg
+	
+	cmp rsi, 10
+	je cmp_al_dl
+	cmp rsi, 11
+	je cmp_cl_dl
+	cmp rsi, 13
+	je cmp_bl_dl
+	jmp errorline
+
+cmp_al_cl:
+	mov al, 0xC1
+	jmp continue_cmp_2b
+	
+cmp_al_dl:
+	mov al, 0xC2
+	jmp continue_cmp_2b
+
+cmp_al_bl:
+	mov al, 0xC3
+	jmp continue_cmp_2b
+
+cmp_bl_cl:
+	mov al, 0xD9
+	jmp continue_cmp_2b
+
+cmp_bl_dl:
+	mov al, 0xDA
+	jmp continue_cmp_2b
+
+cmp_cl_dl:
+	mov al, 0xCA
+	jmp continue_cmp_2b
+
+continue_cmp_2b:
+	mov byte [codgen_buffer + 0], 0x3A
+	mov byte [codgen_buffer + 1], al
+	
+	lea rsi, [codgen_buffer]
+	lea rdi, [code_buffer + r14]
+	mov rcx, 2
+	rep movsb
+	
+	add r14, 2
+	
+	cmp byte [debug], 1
+	jne cmpchar
+	call print_debug
+	
+	jmp cmpchar
+
+cmp_arg_2_reg:
+	lea rsi, [cmd_arg_2]
+    lea rdi, [cmd_reg_rax]
+    call strcmp
+	jc .is_rax
+	
+	lea rsi, [cmd_arg_2]
+    lea rdi, [cmd_reg_rdi]
+    call strcmp
+	jc .is_rdi
+	
+	lea rsi, [cmd_arg_2]
+    lea rdi, [cmd_reg_rsi]
+    call strcmp
+    jc .is_rsi
+	
+	lea rsi, [cmd_arg_2]
+    lea rdi, [cmd_reg_rdx]
+    call strcmp
+    jc .is_rdx
+	
+	lea rsi, [cmd_arg_2]
+    lea rdi, [cmd_reg_rcx]
+    call strcmp
+    jc .is_rcx
+	
+	lea rsi, [cmd_arg_2]
+    lea rdi, [cmd_reg_rbx]
+    call strcmp
+    jc .is_rbx
+	
+	cmp word [cmd_arg_2], "al"
+	je .is_al
+	
+	cmp word [cmd_arg_2], "cl"
+	je .is_cl
+	
+	cmp word [cmd_arg_2], "bl"
+	je .is_bl
+	
+	cmp word [cmd_arg_2], "dl"
+	je .is_dl
+
+.is_rax:
+	mov rsi, 0
+	ret
+.is_rdi:
+	mov rsi, 7
+	ret
+.is_rsi:
+	mov rsi, 6
+	ret
+.is_rdx:
+	mov rsi, 2
+	ret
+.is_rcx:
+	mov rsi, 1
+	ret
+.is_rbx:
+	mov rsi, 3
+	ret
+.is_al:
+	mov rsi, 10
+	ret
+.is_cl:
+	mov rsi, 11
+	ret
+.is_bl:
+	mov rsi, 13
+	ret
+.is_dl:
+	mov rsi, 12
+	ret
+
+; --- FUNCTION: cmdje ---
+cmdje:
+	call pickarg
+
+	mov word [codgen_buffer + 0], 0x840F
+
+	mov dword [codgen_buffer + 2], 0x00000000
+
+	lea rsi, [codgen_buffer]
+	lea rdi, [code_buffer + r14]
+	mov rcx, 6
+	rep movsb
+	
+	mov rax, r14
+	inc rax
+	inc rax
+	mov [call_func_pointer], rax
+	
+	add r14, 6
+	
+	mov rax, [call_depends_count]
+	mov rdx, 72
+	mul rdx
+	lea rdi, [call_depends + rax]
+	
+	lea rsi, [cmd_arg]
+	mov rcx, 8
+	rep movsq
+	
+	mov rax, [call_func_pointer]
+	mov [rdi], rax
+	
+	inc qword [call_depends_count]
+	
+	cmp byte [debug], 1
+	jne cmpchar
+	call print_debug
+	
+	jmp cmpchar
+	
+cmdinc:
+	call pickarg
+	
+	lea rsi, [cmd_arg]
+	lea rdi, [cmd_reg_rax]
+	call strcmp
+	jc .inc_rax
+	
+	lea rsi, [cmd_arg]
+    lea rdi, [cmd_reg_rdi]
+    call strcmp
+	jc .inc_rdi
+	
+	lea rsi, [cmd_arg]
+    lea rdi, [cmd_reg_rsi]
+    call strcmp
+    jc .inc_rsi
+	
+	lea rsi, [cmd_arg]
+    lea rdi, [cmd_reg_rdx]
+    call strcmp
+    jc .inc_rdx
+	
+	lea rsi, [cmd_arg]
+    lea rdi, [cmd_reg_rcx]
+    call strcmp
+    jc .inc_rcx
+	
+	lea rsi, [cmd_arg]
+    lea rdi, [cmd_reg_rbx]
+    call strcmp
+    jc .inc_rbx
+	
+	cmp word [cmd_arg], "al"
+	je .inc_al
+	
+	cmp word [cmd_arg], "cl"
+	je .inc_cl
+	
+	cmp word [cmd_arg], "bl"
+	je .inc_bl
+	
+	cmp word [cmd_arg], "dl"
+	je .inc_dl
+	
+	jmp errorline
+	
+.inc_rax:
+	mov al, 0xC0
+	jmp .continue
+
+.inc_rdi:
+	mov al, 0xC7
+	jmp .continue
+	
+.inc_rsi:
+	mov al, 0xC6
+	jmp .continue
+	
+.inc_rdx:
+	mov al, 0xC2
+	jmp .continue
+	
+.inc_rcx:
+	mov al, 0xC1
+	jmp .continue
+	
+.inc_rbx:
+	mov al, 0xC3
+	jmp .continue
+	
+.continue:
+	mov word [codgen_buffer + 0], 0xFF48
+
+	mov byte [codgen_buffer + 2], al
+
+	lea rsi, [codgen_buffer]
+	lea rdi, [code_buffer + r14]
+	mov rcx, 3
+	rep movsb
+	
+	add r14, 3
+	
+	cmp byte [debug], 1
+	jne cmpchar
+	call print_debug
+	
+	jmp cmpchar
+
+.inc_al:
+	mov al, 0xC0
+	jmp .continue_2b
+	
+.inc_cl:
+	mov al, 0xC1
+	jmp .continue_2b
+	
+.inc_dl:
+	mov al, 0xC2
+	jmp .continue_2b
+	
+.inc_bl:
+	mov al, 0xC3
+	jmp .continue_2b
+
+.continue_2b:
+	mov byte [codgen_buffer + 0], 0xFE
+
+	mov byte [codgen_buffer + 1], al
+
+	lea rsi, [codgen_buffer]
+	lea rdi, [code_buffer + r14]
+	mov rcx, 2
+	rep movsb
+	
+	add r14, 2
 	
 	cmp byte [debug], 1
 	jne cmpchar
