@@ -65,6 +65,10 @@ section .data
 	uefi_start_len: equ $ - uefi_start_opcodes
 	; ARGS
 	cmd_args_str: db "args",0
+	; FUNC
+	cmd_func_str: db "func",0
+	cmd_end_str: db "end",0
+	cmd_call_str: db "call",0
 	; FORMATS
 	format_pe: db "--pe",0
 	format_bin: db "--bin",0
@@ -194,10 +198,12 @@ section .data
 		dq 0x1000                   ; p_align
 
 section .bss
+	; FILE
 	end_fd: resq 1
 	fd: resq 1
 	bytesnum: resq 1
 	file: resb 2048
+	; CMD
 	token: resb 64
 	token_len: resq 1
 	num_lines: resb 20
@@ -209,12 +215,25 @@ section .bss
 	is_addr: resq 1
 	is_address: resq 1
 	is_imediate: resq 1
+	; VAR
 	var_symbols: resb 2048
 	symbol_count: resq 1
 	var_name: resb 64
 	var_name_len: resq 1
 	var_value: resb 64
 	var_value_len: resq 1
+	; FUNC
+	func_symbols: resb 2048
+	func_symbols_count: resq 1
+	func_name: resb 64
+	func_name_len: resq 1
+	jump_pointer: resq 1
+	call_depends: resb 2048
+	call_depends_count: resq 1
+	call_func_name: resb 64
+	call_func_name_len: resq 1
+	call_func_pointer: resq 1
+	; CODE
 	code_buffer: resb 4096
 	data_buffer: resb 4096
 	; ARGS
@@ -614,6 +633,21 @@ endcmd:
     lea rdi, [cmd_args_str]
     call strcmp
     jc cmdargs
+	
+	lea rsi, [token]
+    lea rdi, [cmd_func_str]
+    call strcmp
+    jc cmdfunc
+	
+	lea rsi, [token]
+    lea rdi, [cmd_end_str]
+    call strcmp
+    jc cmdend
+	
+	lea rsi, [token]
+    lea rdi, [cmd_call_str]
+    call strcmp
+    jc cmdcall
 
     jmp errorlinecmd
     
@@ -2010,10 +2044,178 @@ cmdargs:
 	
     jmp cmpchar
 
+; --- FUNCTION: cmdfunc ---
+
+cmdfunc:
+	push rbx
+    lea rdi, [func_name]
+    xor rax, rax
+    mov rcx, 8
+    rep stosq
+    pop rbx
+    inc rbx
+
+.skip_1:
+	mov al, [file + rbx]
+	cmp al, ' '
+	jne .get_name
+	inc rbx
+	jmp .skip_1
+	
+.get_name:
+	xor rdi, rdi
+	
+.name:
+	mov al, [file + rbx]
+	cmp al, ':'
+	je .endname
+	cmp al, 10
+	je errorline
+	cmp al, 13
+	je errorline
+	mov [func_name + rdi], al
+	inc rbx
+	inc rdi
+	jmp .name
+	
+.endname:
+	mov [func_name_len], rdi
+	mov [func_name + rdi], 0
+	inc rbx
+
+	mov byte [codgen_buffer + 0], 0xE9
+
+	mov dword [codgen_buffer + 1], 0x00000000
+
+	lea rsi, [codgen_buffer]
+	lea rdi, [code_buffer + r14]
+	mov rcx, 5
+	rep movsb
+	
+	mov rax, r14
+	inc rax
+	mov [jump_pointer], rax
+	
+	add r14, 5
+	
+	mov rax, [func_symbols_count]
+	mov rdx, 72
+	mul rdx
+	lea rdi, [func_symbols + rax]
+	
+	lea rsi, [func_name]
+	mov rcx, 8
+	rep movsq
+	
+	mov [rdi], r14
+	
+	inc qword [func_symbols_count]
+	
+	cmp byte [debug], 1
+	jne cmpchar
+	call print_debug
+	
+	jmp cmpchar
+
+; --- FUNCTION: cmdend ---
+
+cmdend:
+	mov byte [codgen_buffer + 0], 0xC3
+	lea rsi, [codgen_buffer]
+	lea rdi, [code_buffer + r14]
+	mov rcx, 1
+	rep movsb
+	
+	add r14, 1
+	
+	mov rax, r14
+	sub rax, [jump_pointer]
+	sub rax, 4
+	
+	mov rcx, [jump_pointer]
+	mov dword [code_buffer + rcx], eax
+	
+	cmp byte [debug], 1
+	jne cmpchar
+	call print_debug
+	
+	jmp cmpchar
+
+; --- FUNCTION: cmdcall ---
+
+cmdcall:
+	push rbx
+    lea rdi, [call_func_name]
+    xor rax, rax
+    mov rcx, 8
+    rep stosq
+    pop rbx
+    inc rbx
+
+.skip_1:
+	mov al, [file + rbx]
+	cmp al, ' '
+	jne .get_name
+	inc rbx
+	jmp .skip_1
+	
+.get_name:
+	xor rdi, rdi
+	
+.name:
+	mov al, [file + rbx]
+	cmp al, 10
+	je .endname
+	cmp al, 13
+	je .endname
+	mov [call_func_name + rdi], al
+	inc rbx
+	inc rdi
+	jmp .name
+	
+.endname:
+	mov [call_func_name_len], rdi
+	mov [call_func_name + rdi], 0
+	inc rbx
+
+	mov byte [codgen_buffer + 0], 0xE8
+
+	mov dword [codgen_buffer + 1], 0x00000000
+
+	lea rsi, [codgen_buffer]
+	lea rdi, [code_buffer + r14]
+	mov rcx, 5
+	rep movsb
+	
+	mov rax, r14
+	inc rax
+	mov [call_func_pointer], rax
+	
+	add r14, 5
+	
+	mov rax, [call_depends_count]
+	mov rdx, 72
+	mul rdx
+	lea rdi, [call_depends + rax]
+	
+	lea rsi, [call_func_name]
+	mov rcx, 8
+	rep movsq
+	
+	mov rax, [call_func_pointer]
+	mov [rdi], rax
+	
+	inc qword [call_depends_count]
+	
+	cmp byte [debug], 1
+	jne cmpchar
+	call print_debug
+	
+	jmp cmpchar
 
 print_debug:
 	push rax
-    	push rbx
+    push rbx
    	push rcx
   	push rdx
   	push rsi
@@ -2141,6 +2343,76 @@ write_elf_header:
 	pop rax
 	mov byte [is_elf], 0
 	jmp endarchive
+	
+; --- FUNCTION: pick_depends ---
+pick_depends:
+    mov rax, [call_depends_count]
+    cmp rax, 0
+    je .end
+    xor rdx, rdx
+
+.loop_depends:
+    cmp rdx, [call_depends_count]
+    je .end
+    
+    push rdx
+    mov rax, rdx
+    mov rbx, 72
+    mul rbx
+    pop rdx
+    lea rsi, [call_depends + rax]
+
+    xor r11, r11
+
+.loop_func:
+	cmp r11, [func_symbols_count]
+	je .notfound
+
+	push rdx
+	mov rax, r11
+	mov rbx, 72
+	mul rbx
+	pop rdx
+	lea rcx, [func_symbols + rax]
+
+	xor r9, r9
+.compare_names:
+    cmp r9, 64
+    je .found
+    
+    mov r8, [rsi + r9]
+    mov r10, [rcx + r9]
+    cmp r8, r10
+    jne .next_func
+    
+    add r9, 8
+    jmp .compare_names
+
+.next_func:
+    inc r11
+    jmp .loop_func
+
+.found:
+    mov r8, [rcx + 64]
+    mov r10, [rsi + 64]
+	
+    mov rax, r8
+    sub rax, r10
+    sub rax, 4
+    
+    lea rbx, [code_buffer]
+    add rbx, r10
+    mov dword [rbx], eax
+	
+    inc rdx
+    jmp .loop_depends
+
+.notfound:
+    inc rdx
+    jmp .loop_depends
+
+.end:
+    ret
 ; --- FUNCTION: endarchive ---
 endarchive:
 	cmp byte [is_pe], 1
@@ -2154,6 +2426,9 @@ endarchive:
     mov rsi, 4096
     xor rdx, rdx
     syscall
+	
+	; PEGAR DEPENDENCIAS
+	call pick_depends
 
     mov rax, 1
     mov rdi, [end_fd]
