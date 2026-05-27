@@ -21,6 +21,11 @@ exit(Code)
 exit(10)
 exit() // Without code equals 0
 
+args(0) // Number of args
+args(1) // Name of the program
+args(2) // First arg
+It moves the value in rax
+
 Registrators avaliable:
 
 rax
