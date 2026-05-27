@@ -1,7 +1,6 @@
 / VARIAVEIS
 var newline[1] = 10
 var msg[20] = "LibreCompiler v1.0.0"
-var msg_comp[11] = "Compiling: "
 var buffer[1000]
 
 / LibreCompiler
@@ -18,28 +17,27 @@ mov(rsi, &newline)
 mov(rdx, 1)
 exec()
 
-/ Compiling
-mov(rax, 1)
-mov(rdi, 1)
-mov(rsi, &msg_comp)
-mov(rdx, 11)
-exec()
+args(2) / Moves the second arg in rax
+mov(rsi, rax)
 
-///// Changing rdx
-mov(rbx, 3)
-mov(rdx, rbx)
+mov(rbx, 0)
 
-/ LibreCompiler with new rdx
-mov(rax, 1)
-mov(rdi, 1)
-mov(rsi, &msg) / MSG, you can comment on commands too
-exec()
+call loop
 
-/ Newline
-mov(rax, 1)
-mov(rdi, 1)
-mov(rsi, &newline)
-mov(rdx, 1)
-exec()
+func loop:
+	mov(rax, 1)
+	mov(rdi, 1)
+	mov(rsi, &msg)
+	mov(rdx, 20)
+	exec()
+	
+	mov(rax, 1)
+	mov(rdi, 1)
+	mov(rsi, &newline)
+	mov(rdx, 1)
+	exec()
+	
+	call loop
+end
 
 exit(0)
