@@ -1,7 +1,9 @@
 / VARIAVEIS
 var newline[1] = 10
 var msg[20] = "LibreCompiler v1.0.0"
+var msg_2[10] = "=========="
 var buffer[1000]
+var num[1] = 10
 
 / LibreCompiler
 mov(rax, 1)
@@ -25,9 +27,12 @@ mov(rbx, 0)
 call loop
 
 func loop:
+	mov(rax, [num])
+	cmp(rax, rbx)
+	je(exit)
 	mov(rax, 1)
 	mov(rdi, 1)
-	mov(rsi, &msg)
+	mov(rsi, &msg_2)
 	mov(rdx, 20)
 	exec()
 	
@@ -37,7 +42,11 @@ func loop:
 	mov(rdx, 1)
 	exec()
 	
+	inc(rbx)
+
 	call loop
 end
 
-exit(0)
+func exit:
+	exit(0)
+end
