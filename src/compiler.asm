@@ -63,6 +63,8 @@ section .data
 	uefi_start_opcodes:
 		db 0x49, 0x89, 0xd4 ; mov r12, rdx
 	uefi_start_len: equ $ - uefi_start_opcodes
+	; ARGS
+	cmd_args_str: db "args",0
 	; FORMATS
 	format_pe: db "--pe",0
 	format_bin: db "--bin",0
@@ -607,6 +609,11 @@ endcmd:
     lea rdi, [cmd_start_str]
     call strcmp
     jc cmdstart
+	
+	lea rsi, [token]
+    lea rdi, [cmd_args_str]
+    call strcmp
+    jc cmdargs
 
     jmp errorlinecmd
     
@@ -1037,7 +1044,7 @@ cmdexec:
     jmp cmpchar
 ; --- FUNCTION: cmdexec ---
 ; -------------------------
-; --- FUNCTION: cmdmov ---
+; --- FUNCTION: r ---
 cmdmov:
 	mov byte [is_addr], 0
 	mov byte [is_address], 0
@@ -1939,6 +1946,70 @@ cmdstart:
 	call print_debug
     
     jmp cmpchar
+
+; --- FUNCTION: cmdargs ---
+cmdargs:
+	call pickarg
+	call atoi_arg
+
+	cmp rax, 0
+	je .args0
+	cmp rax, 1
+	je .args1
+	cmp rax, 2
+	je .args2
+	
+.args0:
+	mov byte [codgen_buffer + 0], 0x48
+	mov byte [codgen_buffer + 1], 0x8B
+	mov byte [codgen_buffer + 2], 0x04
+	mov byte [codgen_buffer + 3], 0x24
+	
+	lea rsi, [codgen_buffer]
+    lea rdi, [code_buffer + r14]
+    mov rcx, 4
+    rep movsb
+	
+	add r14, 4
+	jmp .continue
+
+.args1:
+	mov byte [codgen_buffer + 0], 0x48
+	mov byte [codgen_buffer + 1], 0x8B
+	mov byte [codgen_buffer + 2], 0x44
+	mov byte [codgen_buffer + 3], 0x24
+	mov byte [codgen_buffer + 4], 0x08
+	
+	lea rsi, [codgen_buffer]
+    lea rdi, [code_buffer + r14]
+    mov rcx, 5
+    rep movsb
+	
+	add r14, 5
+	jmp .continue
+
+.args2:
+	mov byte [codgen_buffer + 0], 0x48
+	mov byte [codgen_buffer + 1], 0x8B
+	mov byte [codgen_buffer + 2], 0x44
+	mov byte [codgen_buffer + 3], 0x24
+	mov byte [codgen_buffer + 4], 0x10
+	
+	lea rsi, [codgen_buffer]
+    lea rdi, [code_buffer + r14]
+    mov rcx, 5
+    rep movsb
+	
+	add r14, 5
+	jmp .continue
+	
+.continue:
+	cmp byte [debug], 1
+	jne cmpchar
+	call print_debug
+	
+    jmp cmpchar
+
 
 print_debug:
 	push rax
